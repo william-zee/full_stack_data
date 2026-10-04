@@ -1,3 +1,4 @@
+from datetime import date
 from fastapi import APIRouter, HTTPException, Path, Query, status
 
 from app.schemas.reservation import ReservationCreate, ReservationRead
@@ -8,9 +9,25 @@ RESERVATIONS: dict[int, dict] = {}
 _next_id = 1
 
 
+def aujourd_hui() -> date:
+    return date.today()
+
+
+def envoyer_notification_annulation(reservation_id: int) -> None:
+    pass
+
+
 @router.post("", response_model=ReservationRead, status_code=status.HTTP_201_CREATED)
 def create_reservation(payload: ReservationCreate):
     global _next_id
+
+    # Bloquer les réservations dans le passé
+    if payload.date_debut < aujourd_hui():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="La date de début ne peut pas être dans le passé",
+        )
+
     reservation = {"id": _next_id, **payload.model_dump(), "statut": "active"}
     RESERVATIONS[_next_id] = reservation
     _next_id += 1
@@ -64,5 +81,12 @@ def cancel_reservation(reservation_id: int = Path(ge=1)):
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Réservation {reservation_id} déjà annulée",
         )
+
     reservation["statut"] = "annulee"
+
+    try:
+        envoyer_notification_annulation(reservation_id=reservation_id)
+    except Exception:
+        pass
+
     return reservation
