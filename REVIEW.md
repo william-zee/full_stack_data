@@ -15,3 +15,39 @@
 
 ## Notes sur l'intégration
 * L'agent Copilot n'avait pas modifié `app/main.py`. L'import et l'enregistrement du routeur (`app.include_router(reservations.router)`) ont été réalisés manuellement pour éviter l'erreur `NameError: name 'reservations' is not defined`.
+
+
+## Notes sur gearshare
+Pour GearShare, supprimer un compte ne doit jamais effacer l'historique des réservations (prêts reçus ou consentis) afin de préserver la traçabilité légale et comptable en cas de litige. Nous retenons donc l'interdiction de suppression physique (`RESTRICT`) en présence de réservations liées, au profit d'une suppression logique (*soft delete* / anonymisation) qui désactive le compte et retire le matériel du catalogue tout en conservant l'intégrité des contrats passés. 
+
+
+
+# Mesures de performances et indexation (PostgreSQL)
+
+## 1. Recherche exacte : `titre = 'Item de test 123456'`
+
+* **Sans index :**
+  * Type de nœud : `Seq Scan`
+  * Temps d'exécution : ~22.4 ms
+* **Avec index (`idx_items_titre`) :**
+  * Type de nœud : `Index Scan`
+  * Temps d'exécution : ~0.06 ms
+* **Facteur d'accélération :** ~370x plus rapide.
+
+---
+
+## 2. Cas subtils
+
+### (a) Recherche avec joker en tête (`titre LIKE '%123456'`)
+* **Type de nœud :** `Seq Scan`
+* **Explication :** Un index B-tree ordonne les données de gauche à droite ; sans préfixe fixe de départ, le moteur ne peut pas naviguer dans l'arbre et doit scanner séquentiellement toute la table.
+
+### (b) Filtre sur colonne booléenne (`disponible`)
+* **Filtre `disponible = TRUE` :** `Seq Scan`. L'index est ignoré car la condition ramène quasiment 100 % des lignes de la table ; un parcours séquentiel est alors moins coûteux en E/S.
+* **Filtre `disponible = FALSE` :** `Bitmap Index Scan` / `Index Scan`. La condition est très sélective (très peu de lignes), l'index devient donc optimal pour cibler immédiatement les bons enregistrements.
+
+---
+
+## 3. Bonus : Joker en fin de chaîne (`titre LIKE 'Item de test 12345%'`)
+* **Type de nœud :** `Index Scan` (ou `Bitmap Index Scan`).
+* **Explication :** Le préfixe étant constant, le B-tree peut cibler directement le début de l'intervalle et parcourir les clés jusqu'à la fin de la plage sans lire toute la table.
