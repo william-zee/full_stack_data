@@ -1,0 +1,92 @@
+{# app/templates/items/detail.html #}
+{% extends "base.html" %}
+
+{% block title %}{{ item.titre }} — GearShare{% endblock %}
+
+{% block content %}
+<article>
+    <h1>{{ item.titre }}</h1>
+
+    <p>{{ item.description if item.description else "Aucune description fournie." }}</p>
+
+    <p><strong>Tarif :</strong> {{ item.tarif_jour }} € / jour</p>
+
+    <p>
+        <strong>Statut :</strong> 
+        {{ "Disponible" if item.disponible else "Indisponible" }}
+    </p>
+
+    <hr>
+
+    <h2>Réservations</h2>
+
+    <!-- Notifications retournées via les paramètres d'URL (redirections 303) -->
+    {% if request.query_params.get("resa") == "ok" %}
+        <p class="alerte alerte-succes">Votre réservation est confirmée.</p>
+    {% endif %}
+    {% if request.query_params.get("annulation") == "ok" %}
+        <p class="alerte alerte-succes">La réservation a bien été annulée.</p>
+    {% endif %}
+    {% if request.query_params.get("erreur") == "409" %}
+        <p class="alerte alerte-erreur">Cette réservation est déjà annulée.</p>
+    {% endif %}
+
+    <!-- Liste des réservations existantes -->
+    <ul>
+    {% for resa in reservations %}
+        <li>
+            Du {{ resa.date_debut }} au {{ resa.date_fin }} — Statut : {{ resa.statut }}
+            
+            <!-- Le bouton Annuler n'est affiché que si la réservation n'est pas déjà annulée -->
+            {% if resa.statut != "annulee" %}
+                <form method="post" action="/reservations/{{ resa.id }}" style="display:inline;">
+                    <!-- Champs cachés pour le statut et la redirection -->
+                    <input type="hidden" name="statut" value="annulee">
+                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                    <button type="submit">Annuler</button>
+                </form>
+            {% endif %}
+        </li>
+    {% else %}
+        <li>Aucune réservation pour cet item.</li>
+    {% endfor %}
+    </ul>
+
+    <hr>
+
+    <h2>Réserver cet item</h2>
+
+    <!-- Affichage des erreurs 422 renvoyées par le backend -->
+    {% if erreurs_resa %}
+        <div class="alerte alerte-erreur">
+            <p><strong>Impossible de réserver :</strong></p>
+            <ul>
+                {% for msg in erreurs_resa %}
+                    <li>{{ msg }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
+    <!-- Formulaire de création de réservation -->
+    <form method="post" action="/items/{{ item.id }}/reservations">
+        <div>
+            <label for="date_debut">Du :</label>
+            <input type="date" id="date_debut" name="date_debut" required
+                   value="{{ saisie_resa.date_debut if saisie_resa else '' }}">
+        </div>
+        
+        <div>
+            <label for="date_fin">Au :</label>
+            <input type="date" id="date_fin" name="date_fin" required
+                   value="{{ saisie_resa.date_fin if saisie_resa else '' }}">
+        </div>
+        
+        <button type="submit">Réserver</button>
+    </form>
+
+    <p style="margin-top: 20px;">
+        <a href="/items">← Retour à la liste</a>
+    </p>
+</article>
+{% endblock %}
